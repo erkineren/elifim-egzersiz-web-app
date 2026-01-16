@@ -302,7 +302,7 @@ export default function Home() {
               {/* AI Mood Check-in */}
               <div className="bg-stone-50 rounded-xl p-4 mt-4 border border-stone-100">
                 <label className="block text-sm font-bold text-stone-800 mb-2">Bugün nasıl hissediyorsun?</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input 
                     type="text" 
                     value={moodInput}
@@ -313,7 +313,7 @@ export default function Home() {
                   <button 
                     onClick={getAIMotivation} 
                     disabled={isLoadingMotivation}
-                    className="bg-stone-800 text-white px-4 py-2 rounded-lg hover:bg-orange-400 transition-colors flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+                    className="bg-stone-800 text-white px-4 py-3 sm:py-2 rounded-lg hover:bg-orange-400 transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
                   >
                     <span>{isLoadingMotivation ? 'Yazıyor...' : 'Motive Et'}</span>
                     <i className="fa-solid fa-wand-magic-sparkles text-yellow-400"></i>
