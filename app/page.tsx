@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { marked } from 'marked';
 import AuthWrapper from './components/AuthWrapper';
+import PWAInstallBanner from './components/PWAInstallBanner';
 
 // --- TYPES ---
 interface Exercise {
@@ -629,6 +630,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* PWA Install Banner */}
+      <PWAInstallBanner />
     </div>
     </AuthWrapper>
   );
