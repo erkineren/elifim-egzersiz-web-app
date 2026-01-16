@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { marked } from 'marked';
 import AuthWrapper from './components/AuthWrapper';
 import PWAInstallBanner from './components/PWAInstallBanner';
+import { useVoiceAssistant, VoiceControlPanel } from './components/VoiceAssistant';
 
 // --- TYPES ---
 interface Exercise {
@@ -146,6 +147,14 @@ export default function Home() {
   const [seconds, setSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   
+  // Voice assistant state
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
+  const [repCount, setRepCount] = useState(0);
+  const lastMotivationRef = useRef(0);
+  
+  const voiceAssistant = useVoiceAssistant({ enabled: voiceEnabled });
+  
   // AI state
   const [moodInput, setMoodInput] = useState('');
   const [aiMotivation, setAiMotivation] = useState('');
@@ -238,16 +247,45 @@ export default function Home() {
     setCurrentTab(tab);
     if (tab === 'workout') {
       resetTimer();
+      setIsWorkoutStarted(false);
+      setRepCount(0);
+    }
+    if (tab !== 'workout') {
+      voiceAssistant.stop();
     }
     window.scrollTo(0, 0);
+  };
+
+  // Start workout with countdown
+  const startWorkout = async () => {
+    await voiceAssistant.countDown(3);
+    setIsWorkoutStarted(true);
+    setIsTimerRunning(true);
+    voiceAssistant.announceExercise(exercises[currentExerciseIndex].name, true);
+  };
+
+  // Count a rep
+  const handleRepCount = () => {
+    const newCount = repCount + 1;
+    setRepCount(newCount);
+    voiceAssistant.countRep(newCount);
+    
+    // Motivate every 5 reps
+    if (newCount % 5 === 0 && newCount !== lastMotivationRef.current) {
+      lastMotivationRef.current = newCount;
+      setTimeout(() => voiceAssistant.motivate(), 500);
+    }
   };
 
   const nextExercise = () => {
     if (currentExerciseIndex < exercises.length - 1) {
       setCurrentExerciseIndex(prev => prev + 1);
       resetTimer();
+      setRepCount(0);
+      voiceAssistant.announceExercise(exercises[currentExerciseIndex + 1].name);
     } else {
-      alert("Tebrikler Elif! Antrenmanı tamamladın. Harika bir iş çıkardın!");
+      voiceAssistant.announceCompletion();
+      setIsWorkoutStarted(false);
       setCurrentExerciseIndex(0);
       switchTab('dashboard');
     }
@@ -449,99 +487,149 @@ export default function Home() {
         {/* WORKOUT VIEW */}
         {currentTab === 'workout' && (
           <section className="h-full flex flex-col">
+            {/* Voice Control & Progress */}
+            <div className="flex justify-between items-center mb-4">
+              <VoiceControlPanel
+                enabled={voiceEnabled}
+                onToggle={setVoiceEnabled}
+                volume={voiceAssistant.volume}
+                onVolumeChange={voiceAssistant.setVolume}
+                isSupported={voiceAssistant.isSupported}
+                isMusicPlaying={voiceAssistant.isMusicPlaying}
+                isMusicLoading={voiceAssistant.isMusicLoading}
+                onMusicToggle={voiceAssistant.toggleMusic}
+                musicVolume={voiceAssistant.musicVolume}
+                onMusicVolumeChange={voiceAssistant.setMusicVolume}
+              />
+              <span className="text-stone-400 text-sm font-mono">
+                {currentExerciseIndex + 1} / {exercises.length}
+              </span>
+            </div>
+            
             {/* Progress Bar */}
             <div className="w-full bg-stone-200 rounded-full h-2.5 mb-6">
               <div className="bg-orange-400 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
             </div>
 
-            {/* Active Card */}
-            <div className="bg-white rounded-3xl shadow-lg p-6 md:p-10 flex-grow flex flex-col justify-between relative overflow-hidden">
-              <div className="flex justify-between items-start">
-                <span className="bg-stone-100 text-stone-800 px-3 py-1 rounded-full text-xs font-bold tracking-wide">
-                  {currentExercise.category}
-                </span>
-                <span className="text-stone-400 text-sm font-mono">
-                  {currentExerciseIndex + 1} / {exercises.length}
-                </span>
-              </div>
-
-              <div className="text-center my-6">
-                <div className="w-24 h-24 bg-stone-50 rounded-full mx-auto flex items-center justify-center mb-4 text-orange-400 shadow-inner">
-                  <i className={`${currentExercise.icon} text-4xl`}></i>
+            {/* Start Workout Button (shown before workout starts) */}
+            {!isWorkoutStarted && (
+              <div className="flex-grow flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-32 h-32 bg-orange-400 rounded-full mx-auto flex items-center justify-center mb-6 shadow-xl cursor-pointer hover:bg-orange-500 transition-all transform hover:scale-105"
+                       onClick={startWorkout}>
+                    <i className="fa-solid fa-play text-5xl text-white ml-2"></i>
+                  </div>
+                  <h2 className="text-2xl font-bold text-stone-800 mb-2">Antrenmana Başla</h2>
+                  <p className="text-stone-500">Hazır olduğunda butona bas</p>
+                  <p className="text-sm text-stone-400 mt-2">Geri sayım: 3... 2... 1... Başla!</p>
                 </div>
-                <h2 className="text-3xl font-bold text-stone-800 mb-2">{currentExercise.name}</h2>
-                <div className="text-xl font-medium text-stone-500">{currentExercise.reps || currentExercise.duration}</div>
               </div>
+            )}
 
-              <div className="bg-stone-50 p-4 rounded-xl border border-stone-100">
-                <h4 className="font-bold text-sm text-stone-800 mb-1">
-                  <i className="fa-solid fa-list-ul mr-1"></i> Nasıl Yapılır?
-                </h4>
-                <p className="text-sm text-stone-600 leading-snug">{currentExercise.desc}</p>
-              </div>
-
-              <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 mt-3 relative">
-                <div className="flex justify-between items-start mb-1">
-                  <h4 className="font-bold text-sm text-orange-600">
-                    <i className="fa-solid fa-lightbulb mr-1"></i> Püf Nokta
-                  </h4>
-                  <button 
-                    onClick={() => getExerciseTip(currentExercise.name)}
-                    disabled={loadingTips[currentExercise.name]}
-                    className="text-xs bg-white text-orange-500 border border-orange-200 px-2 py-1 rounded-md hover:bg-orange-100 transition-colors shadow-sm"
-                  >
-                    <span className="flex items-center gap-1 font-bold">
-                      {loadingTips[currentExercise.name] ? (
-                        <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin"></span>
-                      ) : (
-                        '✨ AI İpucu'
-                      )}
+            {/* Active Workout Card */}
+            {isWorkoutStarted && (
+              <>
+                <div className="bg-white rounded-3xl shadow-lg p-6 md:p-10 flex-grow flex flex-col justify-between relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <span className="bg-stone-100 text-stone-800 px-3 py-1 rounded-full text-xs font-bold tracking-wide">
+                      {currentExercise.category}
                     </span>
+                    {/* Rep Counter Badge */}
+                    <div className="flex items-center gap-2">
+                      <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-sm font-bold">
+                        {repCount} tekrar
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-center my-6">
+                    {/* Tap to count rep */}
+                    <div 
+                      className="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-500 rounded-full mx-auto flex items-center justify-center mb-4 text-white shadow-lg cursor-pointer active:scale-95 transition-transform"
+                      onClick={handleRepCount}
+                    >
+                      <div className="text-center">
+                        <i className={`${currentExercise.icon} text-3xl`}></i>
+                        <div className="text-xs mt-1 opacity-80">Dokun</div>
+                      </div>
+                    </div>
+                    <h2 className="text-3xl font-bold text-stone-800 mb-2">{currentExercise.name}</h2>
+                    <div className="text-xl font-medium text-stone-500">{currentExercise.reps || currentExercise.duration}</div>
+                  </div>
+
+                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-100">
+                    <h4 className="font-bold text-sm text-stone-800 mb-1">
+                      <i className="fa-solid fa-list-ul mr-1"></i> Nasıl Yapılır?
+                    </h4>
+                    <p className="text-sm text-stone-600 leading-snug">{currentExercise.desc}</p>
+                  </div>
+
+                  <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 mt-3 relative">
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-bold text-sm text-orange-600">
+                        <i className="fa-solid fa-lightbulb mr-1"></i> Püf Nokta
+                      </h4>
+                      <button 
+                        onClick={() => getExerciseTip(currentExercise.name)}
+                        disabled={loadingTips[currentExercise.name]}
+                        className="text-xs bg-white text-orange-500 border border-orange-200 px-2 py-1 rounded-md hover:bg-orange-100 transition-colors shadow-sm"
+                      >
+                        <span className="flex items-center gap-1 font-bold">
+                          {loadingTips[currentExercise.name] ? (
+                            <span className="inline-block w-3 h-3 border-2 border-current border-r-transparent rounded-full animate-spin"></span>
+                          ) : (
+                            '✨ AI İpucu'
+                          )}
+                        </span>
+                      </button>
+                    </div>
+                    <p className="text-sm text-orange-800 leading-snug">{currentExercise.tip}</p>
+                    
+                    {aiTips[currentExercise.name] && (
+                      <div 
+                        className="mt-3 pt-3 border-t border-orange-200 text-sm text-orange-900"
+                        dangerouslySetInnerHTML={{ __html: `<strong class="text-orange-400">✨ AI İpucu:</strong> ${marked(aiTips[currentExercise.name])}` }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Timer */}
+                  <div className="mt-4 flex justify-center items-center gap-4">
+                    <div className="text-3xl font-mono text-stone-800 font-bold">{formatTime(seconds)}</div>
+                    <button 
+                      onClick={() => setIsTimerRunning(!isTimerRunning)}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                        isTimerRunning ? 'bg-orange-400 text-white' : 'bg-stone-800 text-white hover:bg-orange-400'
+                      }`}
+                    >
+                      <i className={`fa-solid ${isTimerRunning ? 'fa-pause' : 'fa-play'}`}></i>
+                    </button>
+                    <button 
+                      onClick={() => { resetTimer(); setRepCount(0); }}
+                      className="w-10 h-10 rounded-full bg-stone-200 text-stone-800 flex items-center justify-center hover:bg-stone-300"
+                    >
+                      <i className="fa-solid fa-rotate-left"></i>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Controls */}
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                  <button 
+                    onClick={prevExercise}
+                    className="bg-white text-stone-800 py-4 rounded-xl font-bold shadow-lg hover:bg-stone-50"
+                  >
+                    <i className="fa-solid fa-chevron-left mr-2"></i> Önceki
+                  </button>
+                  <button 
+                    onClick={nextExercise}
+                    className="bg-stone-800 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-orange-400 transition-colors"
+                  >
+                    Sonraki <i className="fa-solid fa-chevron-right ml-2"></i>
                   </button>
                 </div>
-                <p className="text-sm text-orange-800 leading-snug">{currentExercise.tip}</p>
-                
-                {aiTips[currentExercise.name] && (
-                  <div 
-                    className="mt-3 pt-3 border-t border-orange-200 text-sm text-orange-900"
-                    dangerouslySetInnerHTML={{ __html: `<strong class="text-orange-400">✨ AI İpucu:</strong> ${marked(aiTips[currentExercise.name])}` }}
-                  />
-                )}
-              </div>
-
-              {/* Timer */}
-              <div className="mt-4 flex justify-center items-center gap-4">
-                <div className="text-3xl font-mono text-stone-800 font-bold">{formatTime(seconds)}</div>
-                <button 
-                  onClick={() => setIsTimerRunning(!isTimerRunning)}
-                  className="w-10 h-10 rounded-full bg-stone-800 text-white flex items-center justify-center hover:bg-orange-400"
-                >
-                  <i className="fa-solid fa-stopwatch"></i>
-                </button>
-                <button 
-                  onClick={resetTimer}
-                  className="w-10 h-10 rounded-full bg-stone-200 text-stone-800 flex items-center justify-center hover:bg-stone-300"
-                >
-                  <i className="fa-solid fa-rotate-left"></i>
-                </button>
-              </div>
-            </div>
-
-            {/* Controls */}
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <button 
-                onClick={prevExercise}
-                className="bg-white text-stone-800 py-4 rounded-xl font-bold shadow-lg hover:bg-stone-50"
-              >
-                <i className="fa-solid fa-chevron-left mr-2"></i> Önceki
-              </button>
-              <button 
-                onClick={nextExercise}
-                className="bg-stone-800 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-orange-400 transition-colors"
-              >
-                Sonraki <i className="fa-solid fa-chevron-right ml-2"></i>
-              </button>
-            </div>
+              </>
+            )}
           </section>
         )}
       </main>
